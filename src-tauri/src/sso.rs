@@ -9,11 +9,19 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use tauri::Emitter;
 
 use crate::connections::config_dir;
 use crate::state::{AppError, AppResult, AppState, SsoToken};
 
 const CLIENT_NAME: &str = "rdsconnect";
+
+/// Emitted to the UI while waiting for the user to approve the device-authorization request.
+#[derive(Clone, Serialize)]
+struct DeviceCode {
+    user_code: String,
+    verification_uri: String,
+}
 
 /// Persisted SSO token cache (our own, not AWS CLI's).
 #[derive(Serialize, Deserialize)]
@@ -115,7 +123,19 @@ async fn load_from_aws_cli_cache() -> AppResult<Option<SsoToken>> {
 }
 
 /// Run the full device-authorization login and cache the resulting token in state + disk.
-pub async fn login(state: &AppState, start_url: &str, region: &str) -> AppResult<SsoToken> {
+/// Emits an `sso-device-code` event so the UI can show the code the user must confirm.
+pub async fn login(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    start_url: &str,
+    region: &str,
+) -> AppResult<SsoToken> {
+    if start_url.trim().is_empty() {
+        return Err(AppError::Sso(
+            "Set your AWS SSO start URL in Settings first.".into(),
+        ));
+    }
+
     let cfg = aws_config::defaults(aws_config::BehaviorVersion::latest())
         .region(aws_types::region::Region::new(region.to_string()))
         .load()
@@ -144,15 +164,24 @@ pub async fn login(state: &AppState, start_url: &str, region: &str) -> AppResult
         .map_err(|e| AppError::Sso(format!("start_device_authorization: {e}")))?;
 
     let device_code = dev.device_code().unwrap_or_default().to_string();
+    let user_code = dev.user_code().unwrap_or_default().to_string();
+    let verification_uri = dev.verification_uri().unwrap_or_default().to_string();
     let verification_uri_complete = dev
         .verification_uri_complete()
-        .or_else(|| dev.verification_uri())
+        .or(dev.verification_uri())
         .unwrap_or_default()
         .to_string();
     let interval = dev.interval().max(1) as u64;
     let expires_in = dev.expires_in();
 
-    // 3. Open the browser so the user can approve.
+    // 3. Tell the UI the code to confirm, then open the browser for approval.
+    let _ = app.emit(
+        "sso-device-code",
+        DeviceCode {
+            user_code,
+            verification_uri,
+        },
+    );
     let _ = open::that(&verification_uri_complete);
 
     // 4. Poll create_token until approval, denial, or timeout.
@@ -186,16 +215,18 @@ pub async fn login(state: &AppState, start_url: &str, region: &str) -> AppResult
                 return Ok(sso);
             }
             Err(err) => {
-                // authorization_pending / slow_down -> keep polling; anything else is fatal.
-                let msg = err.to_string();
-                if msg.contains("AuthorizationPending") || msg.contains("authorization_pending") {
-                    continue;
+                // The SDK reports "still waiting" / "poll slower" as typed service errors;
+                // their Display string is just "service error", so we must match the variant.
+                if let Some(svc) = err.as_service_error() {
+                    if svc.is_authorization_pending_exception() {
+                        continue;
+                    }
+                    if svc.is_slow_down_exception() {
+                        tokio::time::sleep(Duration::from_secs(interval + 5)).await;
+                        continue;
+                    }
                 }
-                if msg.contains("SlowDown") || msg.contains("slow_down") {
-                    tokio::time::sleep(Duration::from_secs(interval)).await;
-                    continue;
-                }
-                return Err(AppError::Sso(format!("create_token: {msg}")));
+                return Err(AppError::Sso(format!("create_token: {err}")));
             }
         }
     }

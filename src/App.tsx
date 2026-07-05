@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { api } from "./api";
 import type { ConnectionMeta, QueryResult } from "./api/types";
+
+interface DeviceCode {
+  user_code: string;
+  verification_uri: string;
+}
 import { Sidebar } from "./components/Sidebar";
 import { SchemaTree } from "./components/SchemaTree";
 import { SqlEditor } from "./components/SqlEditor";
@@ -21,9 +27,18 @@ export default function App() {
   const [result, setResult] = useState<QueryResult | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deviceCode, setDeviceCode] = useState<DeviceCode | null>(null);
 
   const refreshConnections = useCallback(async () => {
     setConnections(await api.listSavedConnections());
+  }, []);
+
+  // While a login is pending, the Rust core emits the code the user must confirm in the browser.
+  useEffect(() => {
+    const unlisten = listen<DeviceCode>("sso-device-code", (e) => setDeviceCode(e.payload));
+    return () => {
+      unlisten.then((off) => off());
+    };
   }, []);
 
   useEffect(() => {
@@ -45,6 +60,8 @@ export default function App() {
       setLoggedIn(status.logged_in);
     } catch (e) {
       setError(String(e));
+    } finally {
+      setDeviceCode(null);
     }
   };
 
@@ -95,6 +112,16 @@ export default function App() {
           <button onClick={() => setPanel("settings")}>Settings</button>
         </div>
       </header>
+
+      {deviceCode && (
+        <div className="device-code">
+          Approve the sign-in in your browser. Confirm this code matches:
+          <strong>{deviceCode.user_code}</strong>
+          <span className="muted">
+            (didn't open? visit {deviceCode.verification_uri})
+          </span>
+        </div>
+      )}
 
       <div className="layout">
         <Sidebar

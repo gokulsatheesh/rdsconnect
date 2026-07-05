@@ -32,11 +32,11 @@ pub async fn sso_status(state: State<'_, AppState>) -> AppResult<SsoStatus> {
 }
 
 #[tauri::command]
-pub async fn sso_login(state: State<'_, AppState>) -> AppResult<SsoStatus> {
+pub async fn sso_login(app: tauri::AppHandle, state: State<'_, AppState>) -> AppResult<SsoStatus> {
     let settings = connections::load_settings().await?;
     // Reuse a cached token if we can, else run the browser device-auth flow.
     if !sso::try_restore(&state, &settings.sso_start_url).await? {
-        sso::login(&state, &settings.sso_start_url, &settings.sso_region).await?;
+        sso::login(&app, &state, &settings.sso_start_url, &settings.sso_region).await?;
     }
     Ok(SsoStatus { logged_in: true })
 }
