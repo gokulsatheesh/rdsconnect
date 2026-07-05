@@ -1,0 +1,30 @@
+version: 2
+updates:
+  # Rust crates — auto-PRs when transitive advisories (e.g. rustls-webpki, glib
+  # via the AWS SDK / Tauri GTK stack) get fixed upstream.
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    # Wait 7 days before proposing a newly published version (guards against
+    # malicious/unstable fresh releases).
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+
+  # Frontend npm deps.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+
+  # Keep the pinned GitHub Actions SHAs current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
