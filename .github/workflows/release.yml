@@ -1,5 +1,8 @@
 name: release
 
+# Third-party actions are pinned to full commit SHAs (supply-chain hardening);
+# the trailing comment records the human-readable version.
+
 on:
   push:
     tags:
@@ -9,7 +12,7 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install system deps (Tauri on Linux)
         run: |
@@ -20,10 +23,10 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             build-essential \
-            curl wget file libssl-dev
+            curl wget file libssl-dev libxdo-dev
 
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-node@v4
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
 
@@ -37,7 +40,7 @@ jobs:
         run: npm run tauri build
 
       - name: Upload artifacts to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
             src-tauri/target/release/bundle/deb/*.deb

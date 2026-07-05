@@ -16,6 +16,19 @@
   parameters, never string interpolation. The SQL editor runs exactly what the user types — by
   design, since this is a database client.
 
+## Known transitive advisories
+
+These come from dependencies we don't control directly and can't fix without upstream
+releases; Dependabot (`.github/dependabot.yml`) opens PRs as fixes land. Both are low
+exploitability for this app's usage:
+
+- **`rustls-webpki` 0.101.7** (RUSTSEC / GHSA-82j2-j2ch-gfr8, DoS panic on a malformed CRL) —
+  pulled in by the **AWS SDK's** own TLS client (`aws-smithy-http-client` → `rustls 0.21`), used
+  only for calls to AWS endpoints (fixed CA, no attacker-supplied CRLs). The app's *database*
+  TLS uses a separate, current rustls-webpki.
+- **`glib` 0.18.5** (GHSA-wrw7-89jp-8q8g, iterator unsoundness) — pulled in by **Tauri's GTK
+  bindings**; the affected `VariantStrIter` path is not used by this app.
+
 ## Supported versions
 
 This project is pre-1.0; security fixes land on `main`.
