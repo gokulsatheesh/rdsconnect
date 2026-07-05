@@ -6,6 +6,10 @@ set -euo pipefail
 DEST="$(cd "$(dirname "$0")/.." && pwd)/src-tauri/resources/global-bundle.pem"
 URL="https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem"
 
+# The resources/ dir is git-ignored (holds only this bundle), so it won't exist in a
+# fresh checkout — create it before writing, or curl fails with exit 23 (write error).
+mkdir -p "$(dirname "$DEST")"
+
 echo "⤓ Fetching RDS CA bundle → $DEST"
 curl -fsSL "$URL" -o "$DEST"
 echo "✓ $(grep -c 'BEGIN CERTIFICATE' "$DEST") certificates written."
