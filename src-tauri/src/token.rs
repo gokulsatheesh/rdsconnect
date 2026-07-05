@@ -50,16 +50,12 @@ pub fn generate(
         urlencode(db_user)
     );
 
-    let signable = SignableRequest::new(
-        "GET",
-        &url,
-        std::iter::empty(),
-        SignableBody::Bytes(&[]),
-    )
-    .map_err(|e| AppError::Token(format!("signable request: {e}")))?;
+    let signable = SignableRequest::new("GET", &url, std::iter::empty(), SignableBody::Bytes(&[]))
+        .map_err(|e| AppError::Token(format!("signable request: {e}")))?;
 
-    let (instructions, _sig) =
-        sign(signable, &params).map_err(|e| AppError::Token(format!("sign: {e}")))?.into_parts();
+    let (instructions, _sig) = sign(signable, &params)
+        .map_err(|e| AppError::Token(format!("sign: {e}")))?
+        .into_parts();
 
     // Apply the query-string additions the signer produced to our URL.
     let mut req = http::Request::builder()
@@ -96,13 +92,25 @@ mod tests {
     use super::*;
 
     fn creds() -> Credentials {
-        Credentials::new("AKIDEXAMPLE", "secret", Some("session".into()), None, "test")
+        Credentials::new(
+            "AKIDEXAMPLE",
+            "secret",
+            Some("session".into()),
+            None,
+            "test",
+        )
     }
 
     #[test]
     fn token_has_expected_structure() {
-        let t = generate(&creds(), "us-east-1", "db.example.rds.amazonaws.com", 3306, "gokul")
-            .expect("token");
+        let t = generate(
+            &creds(),
+            "us-east-1",
+            "db.example.rds.amazonaws.com",
+            3306,
+            "gokul",
+        )
+        .expect("token");
         // No scheme, correct host:port, and the RDS-specific query params.
         assert!(!t.starts_with("https://"));
         assert!(t.starts_with("db.example.rds.amazonaws.com:3306/?"));

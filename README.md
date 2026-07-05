@@ -90,9 +90,10 @@ GitHub release.
 
 ## Status
 
-> Early scaffold. **Verified:** frontend (`npm run build`) and the SigV4 token presign
-> (`cargo test`). The full Tauri build needs the WebKitGTK system deps above; a few AWS-SDK
-> call signatures may still need tightening on first compile.
+> Early but building. **Verified:** the Rust core compiles clean and passes
+> `cargo fmt --check`, `cargo clippy -D warnings`, and `cargo test` (SigV4 token presign);
+> the frontend passes `npm run build`. Next up is exercising the live auth + DB flow
+> end-to-end against a real RDS instance.
 
 **Roadmap** (see [`CONTRIBUTING.md`](CONTRIBUTING.md) for good first issues)
 

@@ -48,8 +48,7 @@ async fn build_pool(
     meta: &ConnectionMeta,
     sso_region: &str,
 ) -> AppResult<sqlx::MySqlPool> {
-    let creds =
-        get_role_credentials(state, sso_region, &meta.account_id, &meta.role_name).await?;
+    let creds = get_role_credentials(state, sso_region, &meta.account_id, &meta.role_name).await?;
     let auth_token = token::generate(&creds, &meta.region, &meta.host, meta.port, &meta.db_user)?;
 
     let mut opts = MySqlConnectOptions::new()
@@ -74,11 +73,7 @@ async fn build_pool(
 }
 
 /// Open (or replace) a connection for `meta`, storing it in state keyed by `meta.id`.
-pub async fn connect(
-    state: &AppState,
-    meta: ConnectionMeta,
-    sso_region: &str,
-) -> AppResult<()> {
+pub async fn connect(state: &AppState, meta: ConnectionMeta, sso_region: &str) -> AppResult<()> {
     let pool = build_pool(state, &meta, sso_region).await?;
     // Prove it works before we store it.
     sqlx::query("SELECT 1")
@@ -90,7 +85,11 @@ pub async fn connect(
         pool: tokio::sync::RwLock::new(pool),
         meta: meta.clone(),
     });
-    state.connections.write().await.insert(meta.id.clone(), active);
+    state
+        .connections
+        .write()
+        .await
+        .insert(meta.id.clone(), active);
     Ok(())
 }
 
@@ -207,7 +206,10 @@ fn row_to_strings(row: &MySqlRow) -> Vec<Option<String>> {
             if raw.as_ref().map(|r| r.is_null()).unwrap_or(true) {
                 return None;
             }
-            let ty = raw.as_ref().map(|r| r.type_info().name().to_string()).unwrap_or_default();
+            let ty = raw
+                .as_ref()
+                .map(|r| r.type_info().name().to_string())
+                .unwrap_or_default();
             // Try the common scalar decodings in order.
             if let Ok(v) = row.try_get::<String, _>(i) {
                 Some(v)

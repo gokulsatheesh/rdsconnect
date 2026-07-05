@@ -135,7 +135,8 @@ async fn read_json_or_default<T: for<'de> Deserialize<'de> + Default>(
 }
 
 async fn write_json<T: Serialize>(path: PathBuf, value: &T) -> AppResult<()> {
-    let bytes = serde_json::to_vec_pretty(value).map_err(|e| AppError::Persistence(e.to_string()))?;
+    let bytes =
+        serde_json::to_vec_pretty(value).map_err(|e| AppError::Persistence(e.to_string()))?;
     tokio::fs::write(&path, bytes)
         .await
         .map_err(|e| AppError::Persistence(e.to_string()))

@@ -7,17 +7,6 @@ use serde::Serialize;
 use crate::sso::require_token;
 use crate::state::{AppError, AppResult, AppState, RoleCreds};
 
-/// Common regions, matching the script's `list` menu. UI also allows free-text entry.
-pub const COMMON_REGIONS: &[&str] = &[
-    "us-east-1",
-    "us-east-2",
-    "us-west-1",
-    "us-west-2",
-    "ap-south-1",
-    "ap-southeast-1",
-    "eu-west-1",
-];
-
 #[derive(Serialize, Clone)]
 pub struct Account {
     pub account_id: String,
@@ -64,7 +53,11 @@ pub async fn list_accounts(state: &AppState, sso_region: &str) -> AppResult<Vec<
             });
         }
     }
-    out.sort_by(|a, b| a.account_name.to_lowercase().cmp(&b.account_name.to_lowercase()));
+    out.sort_by(|a, b| {
+        a.account_name
+            .to_lowercase()
+            .cmp(&b.account_name.to_lowercase())
+    });
     Ok(out)
 }
 
@@ -175,7 +168,10 @@ pub async fn describe_db_instances(
                 continue;
             };
             out.push(DbInstance {
-                identifier: inst.db_instance_identifier().unwrap_or_default().to_string(),
+                identifier: inst
+                    .db_instance_identifier()
+                    .unwrap_or_default()
+                    .to_string(),
                 host: endpoint.address().unwrap_or_default().to_string(),
                 port: endpoint.port().unwrap_or(3306) as u16,
                 engine,

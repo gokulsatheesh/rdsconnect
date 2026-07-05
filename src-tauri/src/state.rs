@@ -30,8 +30,6 @@ pub enum AppError {
     NoConnection(String),
     #[error("persistence error: {0}")]
     Persistence(String),
-    #[error("{0}")]
-    Other(String),
 }
 
 // Tauri commands must return `Result<T, E: Serialize>`. Serialize the message.

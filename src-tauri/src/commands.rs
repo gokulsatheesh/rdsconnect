@@ -5,9 +5,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::aws::{self, Account, DbInstance};
-use crate::connections::{
-    self, HistoryEntry, Settings,
-};
+use crate::connections::{self, HistoryEntry, Settings};
 use crate::db::{self, ColumnInfo, QueryResult};
 use crate::sso;
 use crate::state::{AppResult, AppState, ConnectionMeta};
@@ -66,7 +64,14 @@ pub async fn list_db_instances(
     region: String,
 ) -> AppResult<Vec<DbInstance>> {
     let settings = connections::load_settings().await?;
-    aws::describe_db_instances(&state, &settings.sso_region, &account_id, &role_name, &region).await
+    aws::describe_db_instances(
+        &state,
+        &settings.sso_region,
+        &account_id,
+        &role_name,
+        &region,
+    )
+    .await
 }
 
 // ---- db ----
