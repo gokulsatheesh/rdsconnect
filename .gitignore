@@ -1,0 +1,23 @@
+# Node / Vite
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# Bundled CA is downloaded at setup time, not committed
+src-tauri/resources/global-bundle.pem
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# Local secrets / state (never commit)
+*.env
+.env.*
