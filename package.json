@@ -1,0 +1,32 @@
+{
+  "name": "bifrost",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "IAM-native MySQL client for Linux — the bridge to your databases",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@codemirror/lang-sql": "^6.7.0",
+    "@codemirror/state": "^6.4.1",
+    "@codemirror/view": "^6.28.0",
+    "@tanstack/react-table": "^8.17.3",
+    "@tanstack/react-virtual": "^3.5.0",
+    "@tauri-apps/api": "^2.0.0",
+    "codemirror": "^6.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.4.5",
+    "vite": "^5.3.1"
+  }
+}
