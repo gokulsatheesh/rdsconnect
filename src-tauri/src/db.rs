@@ -29,7 +29,7 @@ pub struct QueryResult {
 /// but resolving needs the AppHandle — for the core we read the resource path via env/relative.
 fn ca_path() -> AppResult<PathBuf> {
     // Prefer an explicit override (set by the packaged app), else the in-repo resource.
-    if let Ok(p) = std::env::var("BIFROST_RDS_CA") {
+    if let Ok(p) = std::env::var("RDSCONNECT_RDS_CA") {
         return Ok(PathBuf::from(p));
     }
     let local = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/global-bundle.pem");
@@ -37,7 +37,7 @@ fn ca_path() -> AppResult<PathBuf> {
         return Ok(local);
     }
     Err(AppError::Db(
-        "RDS CA bundle not found; set BIFROST_RDS_CA or add resources/global-bundle.pem".into(),
+        "RDS CA bundle not found; set RDSCONNECT_RDS_CA or add resources/global-bundle.pem".into(),
     ))
 }
 

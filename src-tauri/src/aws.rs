@@ -125,7 +125,7 @@ pub async fn get_role_credentials(
         rc.secret_access_key().unwrap_or_default(),
         rc.session_token().map(|s| s.to_string()),
         None,
-        "bifrost-sso",
+        "rdsconnect-sso",
     );
 
     state.role_creds.write().await.insert(

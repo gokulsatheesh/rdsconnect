@@ -87,7 +87,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="titlebar">
-        <span className="brand">🌈 Bifrost</span>
+        <span className="brand">rdsconnect</span>
         <div className="titlebar-actions">
           <span className={`sso-dot ${loggedIn ? "on" : "off"}`} />
           <button onClick={login}>{loggedIn ? "SSO ✓" : "Log in"}</button>

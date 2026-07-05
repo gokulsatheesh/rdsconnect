@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::connections::config_dir;
 use crate::state::{AppError, AppResult, AppState, SsoToken};
 
-const CLIENT_NAME: &str = "bifrost";
+const CLIENT_NAME: &str = "rdsconnect";
 
 /// Persisted SSO token cache (our own, not AWS CLI's).
 #[derive(Serialize, Deserialize)]

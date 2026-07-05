@@ -7,7 +7,7 @@
 A native Linux GUI database client that does AWS SSO → IAM auth → connect **invisibly**,
 then lets you actually query. No 15-minute token copy-paste. No paywall.
 
-*(The CLI ancestor was `rds-connect.sh`; the GUI app it grew into is codenamed **Bifrost** — the bridge to your databases.)*
+*(The GUI successor to a `rds-connect.sh` shell script.)*
 
 [![ci](https://github.com/gokulsatheesh/rdsconnect/actions/workflows/ci.yml/badge.svg)](https://github.com/gokulsatheesh/rdsconnect/actions/workflows/ci.yml)
 [![release](https://github.com/gokulsatheesh/rdsconnect/actions/workflows/release.yml/badge.svg)](https://github.com/gokulsatheesh/rdsconnect/actions/workflows/release.yml)

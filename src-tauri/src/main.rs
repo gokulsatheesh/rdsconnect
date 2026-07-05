@@ -1,4 +1,4 @@
-// Bifrost — IAM-native MySQL client.
+// rdsconnect — IAM-native MySQL client.
 // The Rust core owns all AWS + DB I/O and secrets; the UI only calls typed commands.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -42,5 +42,5 @@ fn main() {
             commands::update_settings,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Bifrost");
+        .expect("error while running rdsconnect");
 }

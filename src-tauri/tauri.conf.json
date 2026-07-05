@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Bifrost",
+  "productName": "rdsconnect",
   "version": "0.1.0",
   "identifier": "io.github.gokulsatheesh.rdsconnect",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Bifrost",
+        "title": "rdsconnect",
         "width": 1280,
         "height": 800,
         "minWidth": 900,

@@ -560,30 +560,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
-name = "bifrost"
-version = "0.1.0"
-dependencies = [
- "aws-config",
- "aws-credential-types",
- "aws-sdk-rds",
- "aws-sdk-sso",
- "aws-sdk-ssooidc",
- "aws-sigv4",
- "aws-types",
- "chrono",
- "directories",
- "http 1.4.2",
- "open",
- "serde",
- "serde_json",
- "sqlx",
- "tauri",
- "tauri-build",
- "thiserror 1.0.69",
- "tokio",
-]
-
-[[package]]
 name = "bit-set"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3419,6 +3395,30 @@ name = "raw-window-handle"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
+
+[[package]]
+name = "rdsconnect"
+version = "0.1.0"
+dependencies = [
+ "aws-config",
+ "aws-credential-types",
+ "aws-sdk-rds",
+ "aws-sdk-sso",
+ "aws-sdk-ssooidc",
+ "aws-sigv4",
+ "aws-types",
+ "chrono",
+ "directories",
+ "http 1.4.2",
+ "open",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tauri",
+ "tauri-build",
+ "thiserror 1.0.69",
+ "tokio",
+]
 
 [[package]]
 name = "redox_syscall"

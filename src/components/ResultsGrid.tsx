@@ -102,7 +102,7 @@ function downloadCsv(csv: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `bifrost-results-${Date.now()}.csv`;
+  a.download = `rdsconnect-results-${Date.now()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
