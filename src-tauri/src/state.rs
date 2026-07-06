@@ -5,6 +5,7 @@
 // async-aware locks so Tauri commands (which may run concurrently) stay safe.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use aws_credential_types::Credentials;
@@ -100,15 +101,42 @@ pub struct AppState {
     pub sso_token: RwLock<Option<SsoToken>>,
     pub role_creds: RwLock<HashMap<String, RoleCreds>>,
     pub connections: RwLock<HashMap<String, Arc<ActiveConnection>>>,
+    /// Resolved at startup from the Tauri resource dir (falls back to `RDSCONNECT_RDS_CA` or the
+    /// in-repo path in dev). `None` means it couldn't be found — surfaced as an error on connect.
+    pub ca_bundle_path: Option<PathBuf>,
 }
 
 impl AppState {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(ca_bundle_path: Option<PathBuf>) -> Self {
+        Self {
+            ca_bundle_path,
+            ..Self::default()
+        }
     }
 
     /// Cache key for a set of role credentials.
     pub fn cred_key(account_id: &str, role_name: &str) -> String {
         format!("{account_id}/{role_name}")
     }
+}
+
+/// Locate the bundled RDS CA at startup: an explicit override first, then Tauri's resolved
+/// resource dir (correct for an installed .deb/.AppImage regardless of where it was built),
+/// then the in-repo path for `cargo run`/`tauri dev`.
+pub fn resolve_ca_bundle_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    use tauri::Manager;
+
+    if let Ok(p) = std::env::var("RDSCONNECT_RDS_CA") {
+        return Some(PathBuf::from(p));
+    }
+    if let Ok(p) = app.path().resolve(
+        "resources/global-bundle.pem",
+        tauri::path::BaseDirectory::Resource,
+    ) {
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/global-bundle.pem");
+    dev.exists().then_some(dev)
 }

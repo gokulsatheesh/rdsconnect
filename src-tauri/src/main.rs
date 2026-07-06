@@ -10,11 +10,17 @@ mod sso;
 mod state;
 mod token;
 
+use tauri::Manager;
+
 use state::AppState;
 
 fn main() {
     tauri::Builder::default()
-        .manage(AppState::new())
+        .setup(|app| {
+            let ca_bundle_path = state::resolve_ca_bundle_path(app.handle());
+            app.manage(AppState::new(ca_bundle_path));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::ping,
             // Auth

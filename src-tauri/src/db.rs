@@ -25,20 +25,17 @@ pub struct QueryResult {
     pub elapsed_ms: u128,
 }
 
-/// Path to the bundled RDS CA. In dev it's next to the source; in a bundle Tauri resolves it,
-/// but resolving needs the AppHandle — for the core we read the resource path via env/relative.
-fn ca_path() -> AppResult<PathBuf> {
-    // Prefer an explicit override (set by the packaged app), else the in-repo resource.
-    if let Ok(p) = std::env::var("RDSCONNECT_RDS_CA") {
-        return Ok(PathBuf::from(p));
-    }
-    let local = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/global-bundle.pem");
-    if local.exists() {
-        return Ok(local);
-    }
-    Err(AppError::Db(
-        "RDS CA bundle not found; set RDSCONNECT_RDS_CA or add resources/global-bundle.pem".into(),
-    ))
+/// Path to the bundled RDS CA, resolved once at startup via the Tauri resource dir (see
+/// `state::resolve_ca_bundle_path`) and stashed in `AppState`. Never baked in at compile time —
+/// `CARGO_MANIFEST_DIR` is only valid on the machine that *built* the binary, not the one running
+/// a downloaded release.
+fn ca_path(state: &AppState) -> AppResult<PathBuf> {
+    state.ca_bundle_path.clone().ok_or_else(|| {
+        AppError::Db(
+            "RDS CA bundle not found; set RDSCONNECT_RDS_CA or add resources/global-bundle.pem"
+                .into(),
+        )
+    })
 }
 
 /// Build a fresh pool for `meta`, generating a new auth token. `sso_region` is where the SSO
@@ -57,7 +54,7 @@ async fn build_pool(
         .username(&meta.db_user)
         .password(&auth_token)
         .ssl_mode(MySqlSslMode::VerifyIdentity)
-        .ssl_ca(ca_path()?);
+        .ssl_ca(ca_path(state)?);
     if let Some(db) = &meta.default_database {
         opts = opts.database(db);
     }
