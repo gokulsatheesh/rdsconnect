@@ -14,6 +14,14 @@ export interface DbInstance {
   region: string;
 }
 
+/** Optional SSH jump-host config. No secrets — auth is delegated to the system ssh client
+ * (agent, keys, ~/.ssh/config, known_hosts). Mirrors Rust `SshConfig`. */
+export interface SshConfig {
+  host: string;
+  user: string;
+  port: number;
+}
+
 /** Everything needed to (re)build a connection. Mirrors Rust `ConnectionMeta`. No secrets. */
 export interface ConnectionMeta {
   id: string;
@@ -26,6 +34,7 @@ export interface ConnectionMeta {
   port: number;
   db_user: string;
   default_database?: string | null;
+  ssh?: SshConfig | null;
 }
 
 export interface QueryResult {

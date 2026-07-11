@@ -6,6 +6,7 @@ mod aws;
 mod commands;
 mod connections;
 mod db;
+mod ssh;
 mod sso;
 mod state;
 mod token;
@@ -36,6 +37,7 @@ fn main() {
             commands::list_schemas,
             commands::list_tables,
             commands::list_columns,
+            commands::export_csv,
             // Persistence
             commands::list_saved_connections,
             commands::save_connection,

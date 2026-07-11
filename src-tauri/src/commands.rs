@@ -8,7 +8,7 @@ use crate::aws::{self, Account, DbInstance};
 use crate::connections::{self, HistoryEntry, Settings};
 use crate::db::{self, ColumnInfo, QueryResult};
 use crate::sso;
-use crate::state::{AppResult, AppState, ConnectionMeta};
+use crate::state::{AppError, AppResult, AppState, ConnectionMeta};
 
 /// Liveness check for the UI↔core IPC bridge.
 #[tauri::command]
@@ -162,6 +162,30 @@ pub async fn list_history() -> AppResult<Vec<HistoryEntry>> {
 #[tauri::command]
 pub async fn append_history(entry: HistoryEntry) -> AppResult<()> {
     connections::append_history(entry).await
+}
+
+// ---- export ----
+
+/// Save `content` to a user-chosen path via a native save dialog. Returns the saved path, or
+/// `None` if the user cancelled. The dialog and the file write both happen here in the core, so
+/// the webview is never granted filesystem access (browser `<a download>` doesn't work in the
+/// Tauri webview, which is why the UI can't just save the file itself).
+#[tauri::command]
+pub async fn export_csv(default_name: String, content: String) -> AppResult<Option<String>> {
+    let handle = rfd::AsyncFileDialog::new()
+        .set_file_name(&default_name)
+        .add_filter("CSV", &["csv"])
+        .save_file()
+        .await;
+
+    let Some(handle) = handle else {
+        return Ok(None); // user cancelled
+    };
+    let path = handle.path().to_path_buf();
+    tokio::fs::write(&path, content.as_bytes())
+        .await
+        .map_err(|e| AppError::Persistence(format!("writing {}: {e}", path.display())))?;
+    Ok(Some(path.to_string_lossy().into_owned()))
 }
 
 // ---- settings ----

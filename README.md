@@ -33,7 +33,11 @@ instance → auto-generated token → connect**, with the token transparently re
   refreshed automatically on every connect. Existing sessions stay alive.
 - **Guided connection setup** — pick account → role → region → RDS instance in a wizard, then
   save it for one-click reconnects.
-- **TLS by default** — every connection uses the Amazon RDS CA; there is no plaintext path.
+- **TLS by default** — every connection is verified against the Amazon RDS CA; there is no
+  plaintext path.
+- **SSH tunnel support** — reach DBs that are only accessible from inside the VPC by connecting
+  through a bastion / jump host. Uses your system `ssh` (agent, keys, `~/.ssh/config`); no SSH
+  secrets are stored.
 - **Multi-tab SQL editor** — CodeMirror with MySQL syntax highlighting; ⌘/Ctrl+↵ to run.
 - **Fast results grid** — virtualized for large result sets, with one-click CSV export.
 - **Schema browser** — databases → tables → columns, lazy-loaded on expand.

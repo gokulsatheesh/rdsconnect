@@ -209,6 +209,7 @@ mod tests {
             port: 3306,
             db_user: "gokul".into(),
             default_database: None,
+            ssh: None,
         }
     }
 

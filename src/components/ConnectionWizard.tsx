@@ -35,6 +35,12 @@ export function ConnectionWizard({ loggedIn, onLogin, onClose, onSaved }: Props)
   const [dbUser, setDbUser] = useState("");
   const [label, setLabel] = useState("");
 
+  // Optional SSH tunnel (bastion / jump host) for DBs only reachable from inside the VPC.
+  const [sshEnabled, setSshEnabled] = useState(false);
+  const [sshHost, setSshHost] = useState("");
+  const [sshUser, setSshUser] = useState("");
+  const [sshPort, setSshPort] = useState("22");
+
   useEffect(() => {
     api.getSettings().then((s) => {
       setDbUser(s.default_db_user);
@@ -95,6 +101,9 @@ export function ConnectionWizard({ loggedIn, onLogin, onClose, onSaved }: Props)
   const save = () =>
     guard(async () => {
       if (!account || !role || !instance) return;
+      if (sshEnabled && (!sshHost.trim() || !sshUser.trim())) {
+        throw new Error("SSH tunnel needs a host and user (or turn it off).");
+      }
       const id = `${account.account_id}:${instance.identifier}:${dbUser}`;
       await api.saveConnection({
         id,
@@ -107,6 +116,13 @@ export function ConnectionWizard({ loggedIn, onLogin, onClose, onSaved }: Props)
         port: instance.port,
         db_user: dbUser,
         default_database: null,
+        ssh: sshEnabled
+          ? {
+              host: sshHost.trim(),
+              user: sshUser.trim(),
+              port: Number(sshPort) || 22,
+            }
+          : null,
       });
       onSaved();
     });
@@ -209,8 +225,49 @@ export function ConnectionWizard({ loggedIn, onLogin, onClose, onSaved }: Props)
                 DB user
                 <input value={dbUser} onChange={(e) => setDbUser(e.target.value)} />
               </label>
+
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  checked={sshEnabled}
+                  onChange={(e) => setSshEnabled(e.target.checked)}
+                />
+                Connect through an SSH tunnel (bastion / jump host)
+              </label>
+              {sshEnabled && (
+                <div className="ssh-fields">
+                  <label>
+                    SSH host
+                    <input
+                      value={sshHost}
+                      onChange={(e) => setSshHost(e.target.value)}
+                      placeholder="bastion.example.com or a ~/.ssh/config alias"
+                    />
+                  </label>
+                  <div className="row-2">
+                    <label>
+                      SSH user
+                      <input value={sshUser} onChange={(e) => setSshUser(e.target.value)} />
+                    </label>
+                    <label>
+                      SSH port
+                      <input
+                        value={sshPort}
+                        onChange={(e) => setSshPort(e.target.value)}
+                        inputMode="numeric"
+                      />
+                    </label>
+                  </div>
+                  <p className="muted small">
+                    Uses your system <code>ssh</code> (agent, keys, <code>~/.ssh/config</code>,
+                    known_hosts). No SSH secrets are stored.
+                  </p>
+                </div>
+              )}
+
               <div className="summary muted">
                 {instance.host}:{instance.port} · {region} · {account?.account_name} / {role}
+                {sshEnabled && sshHost ? ` · via ssh ${sshUser}@${sshHost}` : ""}
               </div>
               <button onClick={save} disabled={busy}>
                 Save connection

@@ -77,6 +77,41 @@ impl RoleCreds {
 pub struct ActiveConnection {
     pub pool: RwLock<MySqlPool>,
     pub meta: ConnectionMeta,
+    /// The effective socket target + TLS mode. Differs from `meta.host:meta.port` when the
+    /// connection is tunneled over SSH (then it points at the local forwarded port).
+    pub target: ConnectTarget,
+    /// The SSH tunnel backing this connection, if any. Never read — held solely so it stays alive
+    /// exactly as long as the connection does and is torn down (kill-on-drop) when the connection
+    /// is dropped/removed.
+    #[allow(dead_code)]
+    pub tunnel: Option<crate::ssh::SshTunnel>,
+}
+
+/// Where `sqlx` actually opens its TCP socket, and how strictly to verify TLS. For a direct
+/// connection this is the real RDS endpoint with `VerifyIdentity`; for an SSH-tunneled one it's
+/// `127.0.0.1:<local forwarded port>` with `VerifyCa` (the hostname can't match through the
+/// tunnel, but the cert must still chain to the Amazon RDS CA).
+#[derive(Clone, Debug)]
+pub struct ConnectTarget {
+    pub host: String,
+    pub port: u16,
+    pub verify_identity: bool,
+}
+
+/// Optional SSH jump-host config for reaching a DB that's only accessible from inside the VPC.
+/// Carries NO secrets — authentication is delegated to the system `ssh` client (agent, keys,
+/// `~/.ssh/config`, `known_hosts`), consistent with the app's "no secrets on disk" posture.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SshConfig {
+    /// Bastion hostname or a `~/.ssh/config` alias.
+    pub host: String,
+    pub user: String,
+    #[serde(default = "default_ssh_port")]
+    pub port: u16,
+}
+
+fn default_ssh_port() -> u16 {
+    22
 }
 
 /// Everything needed to (re)build an auth token + connection. Mirrors a saved connection,
@@ -94,6 +129,9 @@ pub struct ConnectionMeta {
     pub db_user: String,
     #[serde(default)]
     pub default_database: Option<String>,
+    /// When set, the DB connection is tunneled through this SSH bastion.
+    #[serde(default)]
+    pub ssh: Option<SshConfig>,
 }
 
 #[derive(Default)]

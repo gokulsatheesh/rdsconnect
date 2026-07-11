@@ -1,5 +1,6 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { api } from "../api";
 import type { QueryResult } from "../api/types";
 
 interface Props {
@@ -10,6 +11,8 @@ interface Props {
 export function ResultsGrid({ result }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
   const rows = result?.rows ?? [];
+  const [exporting, setExporting] = useState(false);
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
 
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
@@ -19,6 +22,19 @@ export function ResultsGrid({ result }: Props) {
   });
 
   const csv = useMemo(() => (result ? toCsv(result) : ""), [result]);
+
+  const onExport = async () => {
+    setExporting(true);
+    setExportMsg(null);
+    try {
+      const saved = await api.exportCsv(`rdsconnect-results-${Date.now()}.csv`, csv);
+      setExportMsg(saved ? `Saved to ${saved}` : null); // null = user cancelled
+    } catch (e) {
+      setExportMsg(`Export failed: ${String(e)}`);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   if (!result) {
     return <div className="results-empty">Run a query to see results.</div>;
@@ -31,11 +47,9 @@ export function ResultsGrid({ result }: Props) {
           {result.rows_affected} row{result.rows_affected === 1 ? "" : "s"} ·{" "}
           {result.elapsed_ms} ms
         </span>
-        <button
-          disabled={rows.length === 0}
-          onClick={() => downloadCsv(csv)}
-        >
-          Export CSV
+        {exportMsg && <span className="export-msg muted">{exportMsg}</span>}
+        <button disabled={rows.length === 0 || exporting} onClick={onExport}>
+          {exporting ? "Saving…" : "Export CSV"}
         </button>
       </div>
 
@@ -95,14 +109,4 @@ function toCsv(result: QueryResult): string {
   const header = result.columns.map(esc).join(",");
   const body = result.rows.map((r) => r.map(esc).join(",")).join("\n");
   return `${header}\n${body}`;
-}
-
-function downloadCsv(csv: string) {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `rdsconnect-results-${Date.now()}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
 }

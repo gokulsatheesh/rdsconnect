@@ -45,6 +45,8 @@ open = "5"
 directories = "5"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1"
+# Native save dialog for CSV export — runs in the core, so the webview needs no fs access.
+rfd = "0.15"
 
 [features]
 # By default Tauri runs in production mode; custom-protocol is used by the bundler.

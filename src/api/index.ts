@@ -35,6 +35,9 @@ export const api = {
     invoke<string[]>("list_tables", { id, schema }),
   listColumns: (id: string, schema: string, table: string) =>
     invoke<ColumnInfo[]>("list_columns", { id, schema, table }),
+  /** Save CSV via a native dialog. Resolves to the saved path, or null if cancelled. */
+  exportCsv: (defaultName: string, content: string) =>
+    invoke<string | null>("export_csv", { defaultName, content }),
 
   // persistence
   listSavedConnections: () =>

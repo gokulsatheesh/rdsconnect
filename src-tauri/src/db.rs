@@ -14,7 +14,9 @@ use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlRow, MySqlSslMode}
 use sqlx::{Column, ConnectOptions, Connection, Row, TypeInfo, ValueRef};
 
 use crate::aws::get_role_credentials;
-use crate::state::{ActiveConnection, AppError, AppResult, AppState, ConnectionMeta};
+use crate::state::{
+    ActiveConnection, AppError, AppResult, AppState, ConnectTarget, ConnectionMeta,
+};
 use crate::token;
 
 #[derive(Serialize)]
@@ -43,27 +45,40 @@ fn ca_path(state: &AppState) -> AppResult<PathBuf> {
 /// validation connect below, so a stalled handshake fails in bounded time with a clear message.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// Build a fresh pool for `meta`, generating a new auth token. `sso_region` is where the SSO
-/// portal lives (login region), distinct from the DB's region.
+/// Build a fresh pool for `meta`, generating a new auth token. `target` is where the socket
+/// actually connects (the real endpoint, or a local SSH-forwarded port). `sso_region` is where
+/// the SSO portal lives (login region), distinct from the DB's region.
 async fn build_pool(
     state: &AppState,
     meta: &ConnectionMeta,
+    target: &ConnectTarget,
     sso_region: &str,
 ) -> AppResult<sqlx::MySqlPool> {
     let creds = get_role_credentials(state, sso_region, &meta.account_id, &meta.role_name).await?;
+    // The IAM token is always signed for the REAL RDS endpoint (its true identity), even when the
+    // socket is tunneled through localhost — the DB validates the token against its own hostname.
     let auth_token = token::generate(&creds, &meta.region, &meta.host, meta.port, &meta.db_user)?;
 
+    // Tunneled connections hit 127.0.0.1, whose name can't match the RDS cert, so drop from
+    // VerifyIdentity to VerifyCa: the cert must still chain to the Amazon RDS CA (proving it's a
+    // real RDS instance), we just can't hostname-pin it. The SSH hop already authenticated the path.
+    let ssl_mode = if target.verify_identity {
+        MySqlSslMode::VerifyIdentity
+    } else {
+        MySqlSslMode::VerifyCa
+    };
+
     let mut opts = MySqlConnectOptions::new()
-        .host(&meta.host)
-        .port(meta.port)
+        .host(&target.host)
+        .port(target.port)
         .username(&meta.db_user)
         .password(&auth_token)
-        .ssl_mode(MySqlSslMode::VerifyIdentity)
+        .ssl_mode(ssl_mode)
         .ssl_ca(ca_path(state)?)
         // RDS IAM auth uses MySQL's cleartext-password plugin: the auth "password" is the IAM
         // token, sent in the clear *inside* the TLS tunnel. sqlx disables that plugin by default
         // (cleartext without TLS is unsafe); enable it here — safe precisely because we mandate
-        // VerifyIdentity TLS above, so the token never travels unencrypted.
+        // TLS (VerifyIdentity/VerifyCa) above, so the token never travels unencrypted.
         .enable_cleartext_plugin(true);
     if let Some(db) = &meta.default_database {
         opts = opts.database(db);
@@ -134,15 +149,47 @@ async fn preflight(host: &str, port: u16) -> AppResult<()> {
 
 /// Open (or replace) a connection for `meta`, storing it in state keyed by `meta.id`.
 pub async fn connect(state: &AppState, meta: ConnectionMeta, sso_region: &str) -> AppResult<()> {
-    // Reachability first: a clear, fast error beats a slow, opaque handshake timeout.
-    preflight(&meta.host, meta.port).await?;
+    // Bring up an SSH tunnel first if configured; the DB socket then targets the local forwarded
+    // port. Otherwise connect directly, with a fast reachability preflight.
+    let (target, tunnel) = match &meta.ssh {
+        Some(ssh) => {
+            let tunnel = crate::ssh::SshTunnel::open(ssh, &meta.host, meta.port).await?;
+            let target = ConnectTarget {
+                host: "127.0.0.1".into(),
+                port: tunnel.local_port,
+                verify_identity: false,
+            };
+            (target, Some(tunnel))
+        }
+        None => {
+            // Reachability first: a clear, fast error beats a slow, opaque handshake timeout.
+            preflight(&meta.host, meta.port).await?;
+            let target = ConnectTarget {
+                host: meta.host.clone(),
+                port: meta.port,
+                verify_identity: true,
+            };
+            (target, None)
+        }
+    };
 
     // build_pool validates the connection (surfacing the real TLS/auth error) before returning.
-    let pool = build_pool(state, &meta, sso_region).await?;
+    let pool = match build_pool(state, &meta, &target, sso_region).await {
+        Ok(pool) => pool,
+        Err(e) => {
+            // Don't leak the ssh child if the DB connection itself failed.
+            if let Some(tunnel) = tunnel {
+                tunnel.close().await;
+            }
+            return Err(e);
+        }
+    };
 
     let active = Arc::new(ActiveConnection {
         pool: tokio::sync::RwLock::new(pool),
         meta: meta.clone(),
+        target,
+        tunnel,
     });
     state
         .connections
@@ -155,6 +202,8 @@ pub async fn connect(state: &AppState, meta: ConnectionMeta, sso_region: &str) -
 pub async fn disconnect(state: &AppState, id: &str) -> AppResult<()> {
     if let Some(active) = state.connections.write().await.remove(id) {
         active.pool.read().await.close().await;
+        // The SSH tunnel (if any) is torn down when the last Arc to `active` drops — its ssh
+        // child is spawned with kill_on_drop.
     }
     Ok(())
 }
@@ -169,9 +218,10 @@ fn get_active(
         .ok_or_else(|| AppError::NoConnection(id.to_string()))
 }
 
-/// Rebuild the pool for an existing connection (transparent token refresh).
+/// Rebuild the pool for an existing connection (transparent token refresh). Reuses the same
+/// effective `target` (and the existing SSH tunnel, when present) — only the token/pool refresh.
 async fn rebuild(state: &AppState, active: &ActiveConnection, sso_region: &str) -> AppResult<()> {
-    let pool = build_pool(state, &active.meta, sso_region).await?;
+    let pool = build_pool(state, &active.meta, &active.target, sso_region).await?;
     let old = std::mem::replace(&mut *active.pool.write().await, pool);
     old.close().await;
     Ok(())
@@ -249,15 +299,34 @@ fn rows_to_result(rows: &[MySqlRow], elapsed_ms: u128) -> QueryResult {
     }
 }
 
-/// Pull the first column of each row as a String (for single-column introspection queries).
+/// Pull the first column of each row as a String (for single-column introspection queries like
+/// SHOW DATABASES / information_schema). MySQL commonly returns these text columns with a *binary*
+/// collation, so a plain `String` decode fails — fall back to decoding the raw bytes as UTF-8.
+/// (Without this fallback the schema browser silently comes up empty.)
 fn first_col_strings(rows: &[MySqlRow]) -> Vec<String> {
     rows.iter()
-        .filter_map(|r| r.try_get::<String, _>(0).ok())
+        .filter_map(|r| {
+            r.try_get::<String, _>(0).ok().or_else(|| {
+                r.try_get::<Vec<u8>, _>(0)
+                    .ok()
+                    .and_then(|b| String::from_utf8(b).ok())
+            })
+        })
         .collect()
 }
 
+/// Render a byte column for display: UTF-8 text when it decodes cleanly, else a `<N bytes TYPE>`
+/// placeholder for genuinely binary data.
+fn bytes_to_display(bytes: &[u8], ty: &str) -> String {
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s.to_string(),
+        Err(_) => format!("<{} bytes {}>", bytes.len(), ty),
+    }
+}
+
 /// Render each column as an optional String for the UI grid. Numbers/dates are stringified;
-/// binary/unknown types fall back to a placeholder.
+/// binary columns are shown as UTF-8 text when valid (e.g. SHOW / information_schema text columns
+/// arrive under a binary collation), otherwise a byte-count placeholder.
 fn row_to_strings(row: &MySqlRow) -> Vec<Option<String>> {
     (0..row.len())
         .map(|i| {
@@ -281,7 +350,7 @@ fn row_to_strings(row: &MySqlRow) -> Vec<Option<String>> {
             } else if let Ok(v) = row.try_get::<chrono::NaiveDateTime, _>(i) {
                 Some(v.to_string())
             } else if let Ok(v) = row.try_get::<Vec<u8>, _>(i) {
-                Some(format!("<{} bytes {}>", v.len(), ty))
+                Some(bytes_to_display(&v, &ty))
             } else {
                 Some(format!("<{ty}>"))
             }
@@ -353,6 +422,67 @@ mod tests {
             "message names the target: {msg}"
         );
         assert!(msg.contains("cannot reach"), "message is actionable: {msg}");
+    }
+
+    // Integration test against a real MySQL. Ignored by default (CI has no DB); run with:
+    //   RDSCONNECT_TEST_DSN='mysql://root:testpw@127.0.0.1:3307' cargo test -- --ignored
+    // Proves the binary-collation decode fix end to end: SHOW DATABASES / information_schema
+    // text columns come back under a binary collation and must render as readable text.
+    #[tokio::test]
+    #[ignore = "requires a MySQL server; set RDSCONNECT_TEST_DSN"]
+    async fn decodes_binary_collation_text_from_a_real_mysql() {
+        let dsn = std::env::var("RDSCONNECT_TEST_DSN").expect("set RDSCONNECT_TEST_DSN");
+        let mut conn = sqlx::mysql::MySqlConnection::connect(&dsn)
+            .await
+            .expect("connect to test MySQL");
+
+        // SHOW DATABASES returns the `Database` column under a binary collation.
+        let rows = sqlx::query("SHOW DATABASES")
+            .fetch_all(&mut conn)
+            .await
+            .expect("SHOW DATABASES");
+
+        // first_col_strings (schema browser) must surface real names, not drop them.
+        let names = first_col_strings(&rows);
+        assert!(
+            names.iter().any(|n| n == "information_schema"),
+            "schema list should contain information_schema, got {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n == "mysql"),
+            "schema list should contain mysql, got {names:?}"
+        );
+
+        // row_to_strings (results grid) must render text, never "<N bytes VARBINARY>".
+        let grid: Vec<Vec<Option<String>>> = rows.iter().map(row_to_strings).collect();
+        let cells: Vec<&String> = grid.iter().flatten().flatten().collect();
+        assert!(
+            cells.iter().any(|s| *s == "information_schema"),
+            "grid should render db names as text, got {cells:?}"
+        );
+        assert!(
+            !cells.iter().any(|s| s.contains("VARBINARY")),
+            "grid should not show binary placeholders, got {cells:?}"
+        );
+
+        let _ = conn.close().await;
+    }
+
+    #[test]
+    fn bytes_to_display_renders_utf8_text_but_placeholders_true_binary() {
+        // Text columns returned under a binary collation (SHOW DATABASES, information_schema)
+        // must render as their actual text, not "<N bytes VARBINARY>".
+        assert_eq!(
+            bytes_to_display(b"information_schema", "VARBINARY"),
+            "information_schema"
+        );
+        assert_eq!(bytes_to_display("héllo".as_bytes(), "BLOB"), "héllo");
+        assert_eq!(bytes_to_display(b"", "VARBINARY"), "");
+        // Genuinely non-UTF-8 bytes fall back to the size/type placeholder.
+        assert_eq!(
+            bytes_to_display(&[0xff, 0xfe, 0x00, 0x01], "BLOB"),
+            "<4 bytes BLOB>"
+        );
     }
 
     #[tokio::test]

@@ -44,7 +44,14 @@ export function Sidebar({
               <div className="conn-main">
                 <span className={`status-dot ${connected ? "on" : "off"}`} />
                 <div>
-                  <div className="conn-label">{c.label}</div>
+                  <div className="conn-label">
+                    {c.label}
+                    {c.ssh && (
+                      <span className="ssh-badge" title={`via ssh ${c.ssh.user}@${c.ssh.host}`}>
+                        SSH
+                      </span>
+                    )}
+                  </div>
                   <div className="conn-sub">
                     {c.instance_id} · {c.region} · {c.db_user}
                   </div>
