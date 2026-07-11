@@ -14,7 +14,12 @@ permissions:
   contents: write
 
 jobs:
+  # Gate: no release is built or published unless the secret + dependency scans pass on this tag.
+  security:
+    uses: ./.github/workflows/security.yml
+
   build:
+    needs: security
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -43,6 +48,26 @@ jobs:
 
       - name: Build .deb + .AppImage
         run: npm run tauri build
+
+      - name: Scan built artifacts for secret patterns (before upload)
+        run: |
+          set -euo pipefail
+          found=0
+          for f in \
+            src-tauri/target/release/bundle/deb/*.deb \
+            src-tauri/target/release/bundle/appimage/*.AppImage \
+            src-tauri/target/release/rdsconnect; do
+            [ -e "$f" ] || continue
+            echo "Scanning $f"
+            # AWS keys, private keys, common tokens. --text so binaries are grepped.
+            if strings -n 8 "$f" | grep -aEn \
+              'AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|xox[baprs]-[0-9A-Za-z-]+|ghp_[A-Za-z0-9]{20}|github_pat_[0-9A-Za-z_]{20}|sk-[A-Za-z0-9]{20}'; then
+              echo "::error::Potential secret found in $f"
+              found=1
+            fi
+          done
+          [ "$found" -eq 0 ] && echo "No secret patterns in any artifact."
+          exit $found
 
       - name: Upload artifacts to release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2

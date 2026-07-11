@@ -1,0 +1,57 @@
+name: security
+
+# Secret scanning + dependency (SAST) auditing. Runs on every push/PR, and is reused by the
+# release workflow as a gate so no tagged release can be built from a tree that leaks a secret.
+# Third-party actions are pinned to full commit SHAs; the trailing comment records the version.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call: # invoked by release.yml before it builds/uploads
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0 # full history so the scan covers every commit, not just the tip
+      - name: gitleaks — scan full git history for secrets
+        run: |
+          set -euo pipefail
+          VER=8.21.2
+          curl -sSLf "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          # --redact so any match isn't echoed in logs; non-zero exit fails the job.
+          ./gitleaks detect --source . --redact --no-banner --exit-code 1
+
+  dependencies:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - name: cargo audit — RUSTSEC advisories
+        run: |
+          set -euo pipefail
+          cargo install cargo-audit --locked
+          # Fail on any NEW vulnerability. The ignored set is transitive and unfixable without an
+          # upstream release; each is low-exploitability for this app's usage — see SECURITY.md.
+          # (Unmaintained/unsound *warnings* — Tauri's GTK3 bindings, unic-*, etc. — are reported
+          # but don't fail the build by default, so they're not listed here.)
+          cargo audit --file src-tauri/Cargo.lock \
+            --ignore RUSTSEC-2023-0071 \
+            --ignore RUSTSEC-2026-0098 \
+            --ignore RUSTSEC-2026-0099 \
+            --ignore RUSTSEC-2026-0104 \
+            --ignore RUSTSEC-2026-0194 \
+            --ignore RUSTSEC-2026-0195
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+      - name: npm audit — production deps only
+        # Dev-only advisories (vite/esbuild dev server) don't ship in the app; don't fail on them.
+        run: npm audit --omit=dev --audit-level=high
