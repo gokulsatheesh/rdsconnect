@@ -4,6 +4,7 @@ interface Props {
   connections: ConnectionMeta[];
   activeId: string | null;
   connectedIds: Set<string>;
+  connectingId: string | null;
   onSelect: (id: string) => void;
   onConnect: (meta: ConnectionMeta) => void;
   onDisconnect: (id: string) => void;
@@ -15,6 +16,7 @@ export function Sidebar({
   connections,
   activeId,
   connectedIds,
+  connectingId,
   onSelect,
   onConnect,
   onDisconnect,
@@ -35,6 +37,7 @@ export function Sidebar({
         )}
         {connections.map((c) => {
           const connected = connectedIds.has(c.id);
+          const connecting = connectingId === c.id;
           return (
             <li
               key={c.id}
@@ -67,8 +70,13 @@ export function Sidebar({
                   >
                     Disconnect
                   </button>
+                ) : connecting ? (
+                  <button className="connecting" disabled>
+                    Connecting…
+                  </button>
                 ) : (
                   <button
+                    disabled={!!connectingId}
                     onClick={(e) => {
                       e.stopPropagation();
                       onConnect(c);

@@ -22,6 +22,7 @@ export default function App() {
   const [connections, setConnections] = useState<ConnectionMeta[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [connectedIds, setConnectedIds] = useState<Set<string>>(new Set());
+  const [connectingId, setConnectingId] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [panel, setPanel] = useState<Panel>("results");
   const [result, setResult] = useState<QueryResult | null>(null);
@@ -66,13 +67,17 @@ export default function App() {
   };
 
   const connect = async (meta: ConnectionMeta) => {
+    if (connectingId) return; // ignore repeat clicks while a connect is in flight
     setError(null);
+    setConnectingId(meta.id);
     try {
       await api.connectDb(meta);
       setConnectedIds((s) => new Set(s).add(meta.id));
       setActiveId(meta.id);
     } catch (e) {
       setError(String(e));
+    } finally {
+      setConnectingId(null);
     }
   };
 
@@ -139,6 +144,7 @@ export default function App() {
           connections={connections}
           activeId={activeId}
           connectedIds={connectedIds}
+          connectingId={connectingId}
           onSelect={setActiveId}
           onConnect={connect}
           onDisconnect={disconnect}
