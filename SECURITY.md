@@ -8,12 +8,14 @@
   immediately; they are never written to disk. The only cached secret is the SSO *access token*
   (so you aren't prompted to log in every launch), stored at `~/.config/rdsconnect/sso.json`
   with `0600` permissions.
-- **TLS is mandatory.** IAM RDS auth requires TLS; every connection validates the server
-  certificate against the bundled Amazon RDS CA, with no plaintext fallback. Direct connections
-  use `VerifyIdentity` (chain **and** hostname). Connections tunneled over SSH use `VerifyCa`
-  (chain only) — through the tunnel the socket target is `127.0.0.1`, which can't match the RDS
-  hostname, so the cert is still proven to chain to the genuine Amazon RDS CA while host
-  authentication is provided by the SSH hop instead.
+- **TLS is mandatory.** IAM RDS auth requires TLS, so there is no plaintext fallback. **Direct**
+  connections use `VerifyIdentity` — the server cert is verified against the bundled Amazon RDS CA
+  for both chain **and** hostname. **SSH-tunneled** connections use `Required`: TLS is still
+  enforced (so the IAM auth token is never sent in the clear), but the cert is not verified,
+  because the socket target is `127.0.0.1` and sqlx 0.8 + rustls 0.23 cannot currently skip *only*
+  the hostname check (`VerifyCa` errors on the name mismatch). For tunnels, host authentication is
+  instead provided by the SSH hop to a trusted bastion. (If sqlx regains working hostname-skip,
+  tunnels should move back to CA verification.)
 - **SSH tunnels carry no in-app secrets.** Optional bastion/jump-host tunneling shells out to the
   system `ssh` client, delegating all authentication to the user's existing SSH agent, keys,
   `~/.ssh/config`, and `known_hosts`. rdsconnect never handles or stores SSH keys or passphrases.

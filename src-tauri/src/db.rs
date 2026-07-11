@@ -45,6 +45,22 @@ fn ca_path(state: &AppState) -> AppResult<PathBuf> {
 /// validation connect below, so a stalled handshake fails in bounded time with a clear message.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// TLS mode for a connection. Direct connections use `VerifyIdentity` (verify the cert chains to
+/// the Amazon RDS CA *and* matches the hostname). Tunneled connections hit `127.0.0.1`, which the
+/// RDS cert can never match — and `VerifyCa` (which is meant to skip only the hostname) is broken
+/// in sqlx 0.8 + rustls 0.23: rustls now returns `NotValidForNameContext` but sqlx's hostname-skip
+/// verifier only swallows the old bare `NotValidForName`, so the mismatch still errors. So for
+/// tunnels we use `Required`: TLS is still enforced (mandatory — the IAM auth token is sent under
+/// the MySQL cleartext plugin), but the cert isn't verified against `127.0.0.1`. The SSH hop
+/// authenticates the path to a trusted bastion instead.
+fn tls_mode(verify_identity: bool) -> MySqlSslMode {
+    if verify_identity {
+        MySqlSslMode::VerifyIdentity
+    } else {
+        MySqlSslMode::Required
+    }
+}
+
 /// Build a fresh pool for `meta`, generating a new auth token. `target` is where the socket
 /// actually connects (the real endpoint, or a local SSH-forwarded port). `sso_region` is where
 /// the SSO portal lives (login region), distinct from the DB's region.
@@ -59,14 +75,7 @@ async fn build_pool(
     // socket is tunneled through localhost — the DB validates the token against its own hostname.
     let auth_token = token::generate(&creds, &meta.region, &meta.host, meta.port, &meta.db_user)?;
 
-    // Tunneled connections hit 127.0.0.1, whose name can't match the RDS cert, so drop from
-    // VerifyIdentity to VerifyCa: the cert must still chain to the Amazon RDS CA (proving it's a
-    // real RDS instance), we just can't hostname-pin it. The SSH hop already authenticated the path.
-    let ssl_mode = if target.verify_identity {
-        MySqlSslMode::VerifyIdentity
-    } else {
-        MySqlSslMode::VerifyCa
-    };
+    let ssl_mode = tls_mode(target.verify_identity);
 
     let mut opts = MySqlConnectOptions::new()
         .host(&target.host)
@@ -466,6 +475,14 @@ mod tests {
         );
 
         let _ = conn.close().await;
+    }
+
+    #[test]
+    fn tls_mode_is_verify_identity_direct_and_required_when_tunneled() {
+        // Direct: full hostname+CA verification. Tunneled (127.0.0.1): Required — TLS enforced
+        // but not cert-verified, since sqlx+rustls can't skip only the hostname here.
+        assert!(matches!(tls_mode(true), MySqlSslMode::VerifyIdentity));
+        assert!(matches!(tls_mode(false), MySqlSslMode::Required));
     }
 
     #[test]
