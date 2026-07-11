@@ -59,7 +59,12 @@ async fn build_pool(
         .username(&meta.db_user)
         .password(&auth_token)
         .ssl_mode(MySqlSslMode::VerifyIdentity)
-        .ssl_ca(ca_path(state)?);
+        .ssl_ca(ca_path(state)?)
+        // RDS IAM auth uses MySQL's cleartext-password plugin: the auth "password" is the IAM
+        // token, sent in the clear *inside* the TLS tunnel. sqlx disables that plugin by default
+        // (cleartext without TLS is unsafe); enable it here — safe precisely because we mandate
+        // VerifyIdentity TLS above, so the token never travels unencrypted.
+        .enable_cleartext_plugin(true);
     if let Some(db) = &meta.default_database {
         opts = opts.database(db);
     }
