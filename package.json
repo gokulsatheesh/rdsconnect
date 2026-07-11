@@ -1,7 +1,7 @@
 {
   "name": "rdsconnect",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "IAM-native MySQL client for Linux — the bridge to your databases",
   "scripts": {
