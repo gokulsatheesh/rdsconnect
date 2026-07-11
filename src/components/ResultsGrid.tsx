@@ -54,44 +54,60 @@ export function ResultsGrid({ result }: Props) {
       </div>
 
       <div className="grid-scroll" ref={parentRef}>
-        <table className="grid">
-          <thead>
-            <tr>
-              <th className="rownum" />
-              {result.columns.map((c) => (
-                <th key={c}>{c}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody
-            style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}
+        {/* A CSS-grid table, not an HTML <table>: virtualized rows are absolutely positioned,
+            which a real <table> layout ignores (rows collapse/overlap). Header and body rows
+            share the same grid-template-columns so columns stay aligned. */}
+        <div className="dgrid">
+          <div
+            className="dgrid-head"
+            style={{ gridTemplateColumns: gridTemplate(result.columns.length) }}
+          >
+            <div className="dcell rownum" />
+            {result.columns.map((c) => (
+              <div className="dcell dhead" key={c} title={c}>
+                {c}
+              </div>
+            ))}
+          </div>
+          <div
+            className="dgrid-body"
+            style={{ height: rowVirtualizer.getTotalSize() }}
           >
             {rowVirtualizer.getVirtualItems().map((vi) => {
               const row = rows[vi.index];
               return (
-                <tr
+                <div
                   key={vi.key}
+                  className="dgrid-row"
                   style={{
-                    position: "absolute",
-                    top: 0,
                     transform: `translateY(${vi.start}px)`,
                     height: vi.size,
+                    gridTemplateColumns: gridTemplate(result.columns.length),
                   }}
                 >
-                  <td className="rownum">{vi.index + 1}</td>
+                  <div className="dcell rownum">{vi.index + 1}</div>
                   {row.map((cell, ci) => (
-                    <td key={ci} className={cell === null ? "null-cell" : ""}>
+                    <div
+                      key={ci}
+                      className={`dcell ${cell === null ? "null-cell" : ""}`}
+                      title={cell ?? "NULL"}
+                    >
                       {cell === null ? "NULL" : cell}
-                    </td>
+                    </div>
                   ))}
-                </tr>
+                </div>
               );
             })}
-          </tbody>
-        </table>
+          </div>
+        </div>
       </div>
     </div>
   );
+}
+
+/** Row-number gutter (48px) + one flexible track per column (min 140px, grows to fill). */
+function gridTemplate(columns: number): string {
+  return `48px repeat(${columns}, minmax(140px, 1fr))`;
 }
 
 function toCsv(result: QueryResult): string {

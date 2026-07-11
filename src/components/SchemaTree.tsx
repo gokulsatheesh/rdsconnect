@@ -55,7 +55,9 @@ function SchemaNode({
   return (
     <li className="tree-node">
       <div className="tree-row" onClick={onToggle}>
-        <span className="twisty">{open ? "▾" : "▸"}</span> 🗄 {schema}
+        <span className="twisty">{open ? "▾" : "▸"}</span>
+        <span className="node-icon db" aria-hidden="true" />
+        {schema}
       </div>
       {open && (
         <ul className="tree-children">
@@ -97,7 +99,9 @@ function TableNode({
   return (
     <li className="tree-node">
       <div className="tree-row" onClick={() => setOpen((o) => !o)}>
-        <span className="twisty">{open ? "▾" : "▸"}</span> 🞐 {table}
+        <span className="twisty">{open ? "▾" : "▸"}</span>
+        <span className="node-icon tbl" aria-hidden="true" />
+        {table}
       </div>
       {open && (
         <ul className="tree-children">

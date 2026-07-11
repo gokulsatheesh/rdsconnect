@@ -77,13 +77,24 @@ export default function App() {
   };
 
   const disconnect = async (id: string) => {
-    await api.disconnectDb(id);
-    setConnectedIds((s) => {
-      const n = new Set(s);
-      n.delete(id);
-      return n;
-    });
-    if (activeId === id) setActiveId(null);
+    setError(null);
+    try {
+      await api.disconnectDb(id);
+    } catch (e) {
+      // Surface it, but still drop the connection from the UI — a failed backend close
+      // shouldn't leave the row stuck showing "connected".
+      setError(String(e));
+    } finally {
+      setConnectedIds((s) => {
+        const n = new Set(s);
+        n.delete(id);
+        return n;
+      });
+      if (activeId === id) {
+        setActiveId(null);
+        setResult(null);
+      }
+    }
   };
 
   const runQuery = async (sql: string) => {

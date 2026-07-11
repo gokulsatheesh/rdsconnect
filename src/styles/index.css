@@ -88,6 +88,11 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color:
 .tree-row { padding: 3px 12px; cursor: pointer; white-space: nowrap; }
 .tree-row:hover { background: var(--bg-3); }
 .twisty { color: var(--muted); width: 12px; display: inline-block; }
+/* CSS-drawn node icons (no emoji font dependency — WebKitGTK renders emoji as tofu boxes).
+   Filled accent square = schema/database; outlined square = table. */
+.node-icon { display: inline-block; width: 9px; height: 9px; margin: 0 6px 0 2px; vertical-align: -1px; }
+.node-icon.db { background: var(--accent); border-radius: 2px; opacity: 0.85; }
+.node-icon.tbl { border: 1px solid var(--muted); border-radius: 1px; }
 .tree-children { padding-left: 14px !important; }
 .col-row { display: flex; justify-content: space-between; padding: 2px 12px; color: var(--muted); }
 .col-row .pk { color: var(--accent); font-weight: 600; }
@@ -136,13 +141,23 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color:
   padding: 6px 12px; border-bottom: 1px solid var(--border); color: var(--muted);
 }
 .grid-scroll { flex: 1; overflow: auto; }
-.grid { border-collapse: collapse; width: 100%; font-size: 12px; }
-.grid th, .grid td {
-  border: 1px solid var(--border); padding: 4px 8px; text-align: left;
-  white-space: nowrap; max-width: 360px; overflow: hidden; text-overflow: ellipsis;
+/* CSS-grid results table (see ResultsGrid.tsx). `width: max-content` + `min-width: 100%` makes it
+   fill the pane when there are few/narrow columns but grow (with a horizontal scrollbar) when the
+   columns don't fit. */
+.dgrid { width: max-content; min-width: 100%; font-size: 12px; }
+.dgrid-head {
+  display: grid; position: sticky; top: 0; z-index: 1; background: var(--bg-2); font-weight: 600;
 }
-.grid thead th { background: var(--bg-2); position: sticky; top: 0; z-index: 1; }
-.grid .rownum { background: var(--bg-2); color: var(--muted); text-align: right; }
+.dgrid-body { position: relative; width: 100%; }
+.dgrid-row { display: grid; position: absolute; top: 0; left: 0; right: 0; }
+.dcell {
+  border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  padding: 4px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0; /* let cells shrink so ellipsis works inside grid tracks */
+}
+.dgrid .rownum {
+  background: var(--bg-2); color: var(--muted); text-align: right; font-variant-numeric: tabular-nums;
+}
 .null-cell { color: var(--muted); font-style: italic; }
 .row-error td { color: var(--danger); }
 .sql-cell { font-family: monospace; max-width: 640px; }
