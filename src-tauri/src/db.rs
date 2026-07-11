@@ -7,10 +7,11 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde::Serialize;
 use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlRow, MySqlSslMode};
-use sqlx::{Column, Row, TypeInfo, ValueRef};
+use sqlx::{Column, ConnectOptions, Connection, Row, TypeInfo, ValueRef};
 
 use crate::aws::get_role_credentials;
 use crate::state::{ActiveConnection, AppError, AppResult, AppState, ConnectionMeta};
@@ -38,6 +39,10 @@ fn ca_path(state: &AppState) -> AppResult<PathBuf> {
     })
 }
 
+/// How long a single MySQL/TLS handshake may take before we give up. Applies to the direct
+/// validation connect below, so a stalled handshake fails in bounded time with a clear message.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+
 /// Build a fresh pool for `meta`, generating a new auth token. `sso_region` is where the SSO
 /// portal lives (login region), distinct from the DB's region.
 async fn build_pool(
@@ -59,24 +64,76 @@ async fn build_pool(
         opts = opts.database(db);
     }
 
-    MySqlPoolOptions::new()
+    // Validate with a single direct connection FIRST. A pool's eager `connect_with` retries
+    // opening connections until `acquire_timeout` and then reports a generic
+    // "pool timed out while waiting for an open connection" — discarding the real per-attempt
+    // error (TLS verification failure, "Access denied" from IAM auth, wrong DB, etc.). Opening
+    // one connection ourselves surfaces that actual error verbatim.
+    validate_connection(&opts).await?;
+
+    // The connection is proven to work, so build the pool lazily (no second handshake now).
+    Ok(MySqlPoolOptions::new()
         .max_connections(4)
         // Recycle before the token would expire so new connections always re-auth.
-        .max_lifetime(std::time::Duration::from_secs(10 * 60))
-        .acquire_timeout(std::time::Duration::from_secs(20))
-        .connect_with(opts)
+        .max_lifetime(Duration::from_secs(10 * 60))
+        .acquire_timeout(Duration::from_secs(20))
+        .connect_lazy_with(opts))
+}
+
+/// Open one connection directly (bypassing the pool) so the real handshake/auth error is
+/// surfaced instead of being masked by the pool's generic timeout. Runs `SELECT 1` to prove the
+/// session is actually usable, then closes it.
+async fn validate_connection(opts: &MySqlConnectOptions) -> AppResult<()> {
+    let mut conn = tokio::time::timeout(CONNECT_TIMEOUT, opts.connect())
         .await
-        .map_err(|e| AppError::Db(format!("connect: {e}")))
+        .map_err(|_| {
+            AppError::Db(format!(
+                "connection timed out after {}s during the MySQL/TLS handshake — the host is \
+                 reachable but the server isn't completing the connection",
+                CONNECT_TIMEOUT.as_secs()
+            ))
+        })?
+        .map_err(|e| AppError::Db(format!("connect: {e}")))?;
+
+    let probe = sqlx::query("SELECT 1")
+        .execute(&mut conn)
+        .await
+        .map_err(|e| AppError::Db(format!("handshake: {e}")));
+    let _ = conn.close().await;
+    probe.map(|_| ())
+}
+
+/// How long a preflight TCP dial waits before we declare the host unreachable. Comfortably
+/// longer than a real handshake (sub-second when routable) but far shorter than the pool's
+/// 20s acquire timeout, so an unreachable host fails fast with a clear message.
+const PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(6);
+
+/// Fail fast (and legibly) when the DB host isn't reachable at all — the common case being an
+/// RDS instance in a private subnet you can only reach over the VPN, or a security group that
+/// doesn't allow your IP. Without this, an unreachable host silently burns the full 20s pool
+/// acquire timeout and surfaces as an opaque "pool timed out".
+async fn preflight(host: &str, port: u16) -> AppResult<()> {
+    let addr = format!("{host}:{port}");
+    match tokio::time::timeout(PREFLIGHT_TIMEOUT, tokio::net::TcpStream::connect(&addr)).await {
+        Ok(Ok(_stream)) => Ok(()),
+        Ok(Err(e)) => Err(AppError::Db(format!(
+            "cannot reach {addr}: {e} — check the host and port are correct"
+        ))),
+        Err(_) => Err(AppError::Db(format!(
+            "cannot reach {addr} within {}s — is the instance reachable from here? \
+             Check that you're on the VPN and its security group allows your IP",
+            PREFLIGHT_TIMEOUT.as_secs()
+        ))),
+    }
 }
 
 /// Open (or replace) a connection for `meta`, storing it in state keyed by `meta.id`.
 pub async fn connect(state: &AppState, meta: ConnectionMeta, sso_region: &str) -> AppResult<()> {
+    // Reachability first: a clear, fast error beats a slow, opaque handshake timeout.
+    preflight(&meta.host, meta.port).await?;
+
+    // build_pool validates the connection (surfacing the real TLS/auth error) before returning.
     let pool = build_pool(state, &meta, sso_region).await?;
-    // Prove it works before we store it.
-    sqlx::query("SELECT 1")
-        .execute(&pool)
-        .await
-        .map_err(|e| AppError::Db(format!("handshake: {e}")))?;
 
     let active = Arc::new(ActiveConnection {
         pool: tokio::sync::RwLock::new(pool),
@@ -235,6 +292,86 @@ fn is_connection_error(e: &AppError) -> bool {
         || m.contains("access denied")
         || m.contains("timed out")
         || m.contains("io error")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn connection_errors_trigger_a_token_refresh_retry() {
+        // These are the failure modes where the pool should rebuild with a fresh token and
+        // retry once — an expired token shows up as "access denied", a dropped socket as
+        // "broken pipe"/"connection reset", etc.
+        for msg in [
+            "connection reset by peer",
+            "broken pipe",
+            "Access denied for user 'x'@'y' (using password: YES)",
+            "pool timed out while waiting for an open connection",
+            "io error: unexpected end of file",
+        ] {
+            assert!(
+                is_connection_error(&AppError::Db(msg.into())),
+                "expected {msg:?} to be treated as a connection error"
+            );
+        }
+    }
+
+    #[test]
+    fn query_errors_do_not_trigger_a_retry() {
+        // A SQL/logic error must surface to the user immediately, not be masked by a retry.
+        for msg in [
+            "You have an error in your SQL syntax",
+            "Unknown column 'foo' in 'field list'",
+            "Table 'db.missing' doesn't exist",
+        ] {
+            assert!(
+                !is_connection_error(&AppError::Db(msg.into())),
+                "expected {msg:?} to NOT be treated as a connection error"
+            );
+        }
+        // Non-Db variants are never connection errors.
+        assert!(!is_connection_error(&AppError::NeedsLogin));
+    }
+
+    #[tokio::test]
+    async fn preflight_reports_an_unreachable_host_clearly() {
+        // Port 1 on loopback has nothing listening: the dial is refused immediately (fast,
+        // deterministic, no network) and must surface our actionable "cannot reach" message
+        // naming the exact host:port — not an opaque error.
+        let err = preflight("127.0.0.1", 1).await.expect_err("should fail");
+        let AppError::Db(msg) = err else {
+            panic!("expected a Db error")
+        };
+        assert!(
+            msg.contains("127.0.0.1:1"),
+            "message names the target: {msg}"
+        );
+        assert!(msg.contains("cannot reach"), "message is actionable: {msg}");
+    }
+
+    #[tokio::test]
+    async fn validate_connection_surfaces_the_real_error_not_a_pool_timeout() {
+        // Dialing a refused local port must yield the actual "connect: ..." error immediately,
+        // proving we bypass the pool's generic "pool timed out" masking. (Regression guard for
+        // the whole reason this connection path was rewritten.)
+        let opts = MySqlConnectOptions::new()
+            .host("127.0.0.1")
+            .port(1)
+            .username("x");
+        let err = validate_connection(&opts).await.expect_err("should fail");
+        let AppError::Db(msg) = err else {
+            panic!("expected a Db error")
+        };
+        assert!(
+            msg.starts_with("connect:"),
+            "surfaces the real connect error: {msg}"
+        );
+        assert!(
+            !msg.contains("pool timed out"),
+            "must NOT be the masked pool error: {msg}"
+        );
+    }
 }
 
 // ---- schema introspection via information_schema ----

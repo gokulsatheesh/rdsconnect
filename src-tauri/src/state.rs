@@ -140,3 +140,55 @@ pub fn resolve_ca_bundle_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/global-bundle.pem");
     dev.exists().then_some(dev)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sso_token_validity_respects_the_60s_slack() {
+        let now = chrono::Utc::now().timestamp();
+        // Expires comfortably in the future → valid.
+        let good = SsoToken {
+            access_token: "t".into(),
+            expires_at: now + 3600,
+        };
+        assert!(good.is_valid());
+        // Already expired → invalid.
+        let expired = SsoToken {
+            access_token: "t".into(),
+            expires_at: now - 10,
+        };
+        assert!(!expired.is_valid());
+        // Inside the 60s slack window → treated as invalid so we don't hand out a dying token.
+        let almost = SsoToken {
+            access_token: "t".into(),
+            expires_at: now + 30,
+        };
+        assert!(!almost.is_valid());
+    }
+
+    #[test]
+    fn role_creds_validity_uses_millisecond_slack() {
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let good = RoleCreds {
+            credentials: Credentials::new("ak", "sk", None, None, "t"),
+            expiration_ms: now_ms + 600_000,
+        };
+        assert!(good.is_valid());
+        let expired = RoleCreds {
+            credentials: Credentials::new("ak", "sk", None, None, "t"),
+            expiration_ms: now_ms - 1,
+        };
+        assert!(!expired.is_valid());
+    }
+
+    #[test]
+    fn cred_key_is_stable_and_scoped_by_account_and_role() {
+        assert_eq!(AppState::cred_key("123", "Admin"), "123/Admin");
+        assert_ne!(
+            AppState::cred_key("123", "Admin"),
+            AppState::cred_key("123", "ReadOnly")
+        );
+    }
+}

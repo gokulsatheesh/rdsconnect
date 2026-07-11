@@ -121,4 +121,60 @@ mod tests {
         assert!(t.contains("X-Amz-Security-Token=")); // session token present
         assert!(t.contains("X-Amz-Signature="));
     }
+
+    #[test]
+    fn token_scope_carries_the_db_region_and_service() {
+        // The signing region must be the DB's region (not the SSO/login region) or RDS rejects
+        // the token. The credential scope encodes it as `.../<region>/rds-db/aws4_request`.
+        let t = generate(
+            &creds(),
+            "eu-west-2",
+            "db.example.rds.amazonaws.com",
+            3306,
+            "gokul",
+        )
+        .expect("token");
+        assert!(
+            t.contains("eu-west-2%2Frds-db") || t.contains("eu-west-2/rds-db"),
+            "credential scope should carry region + rds-db service: {t}"
+        );
+    }
+
+    #[test]
+    fn token_without_session_token_omits_the_security_token_param() {
+        // Long-lived IAM users have no session token; the presigned URL must then omit it.
+        let creds = Credentials::new("AKIDEXAMPLE", "secret", None, None, "test");
+        let t = generate(
+            &creds,
+            "us-east-1",
+            "db.example.rds.amazonaws.com",
+            3306,
+            "gokul",
+        )
+        .expect("token");
+        assert!(!t.contains("X-Amz-Security-Token="));
+    }
+
+    #[test]
+    fn urlencode_percent_encodes_reserved_characters() {
+        // Usernames are usually simple, but IAM allows a few punctuation chars; anything outside
+        // the RFC3986 unreserved set must be percent-encoded so the query param stays well-formed.
+        assert_eq!(urlencode("gokul.satheesh"), "gokul.satheesh"); // unreserved, untouched
+        assert_eq!(urlencode("a+b c"), "a%2Bb%20c");
+        assert_eq!(urlencode("user@host"), "user%40host");
+        assert_eq!(urlencode("a/b"), "a%2Fb");
+    }
+
+    #[test]
+    fn token_encodes_special_characters_in_the_db_user() {
+        let t = generate(
+            &creds(),
+            "us-east-1",
+            "db.example.rds.amazonaws.com",
+            3306,
+            "iam+user",
+        )
+        .expect("token");
+        assert!(t.contains("DBUser=iam%2Buser"));
+    }
 }
