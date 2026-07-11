@@ -16,6 +16,13 @@ use tauri::Manager;
 use state::AppState;
 
 fn main() {
+    // rustls 0.23 is compiled with more than one crypto provider (aws-lc-rs + ring) via our
+    // transitive deps (the AWS SDK and sqlx), so it can't auto-select one and panics on the first
+    // TLS handshake with "Could not automatically determine the process-level CryptoProvider".
+    // Install aws-lc-rs as the process-wide default explicitly, before anything opens a TLS
+    // connection. Ignoring the result is fine — an Err just means it was already installed.
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
     tauri::Builder::default()
         .setup(|app| {
             let ca_bundle_path = state::resolve_ca_bundle_path(app.handle());

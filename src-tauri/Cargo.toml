@@ -47,6 +47,10 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1"
 # Native save dialog for CSV export — runs in the core, so the webview needs no fs access.
 rfd = "0.15"
+# rustls 0.23 is pulled in with multiple crypto providers (aws-lc-rs + ring) via the AWS SDK and
+# sqlx, so it can't auto-select one and panics on first TLS use. We install aws-lc-rs explicitly
+# at startup (see main.rs); this dep gives us the provider to install.
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 
 [features]
 # By default Tauri runs in production mode; custom-protocol is used by the bundler.
