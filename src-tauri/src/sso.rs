@@ -44,7 +44,7 @@ pub async fn try_restore(state: &AppState, start_url: &str) -> AppResult<bool> {
             return Ok(true);
         }
     }
-    if let Some(tok) = load_from_aws_cli_cache().await? {
+    if let Some(tok) = load_from_aws_cli_cache(start_url).await? {
         if tok.is_valid() {
             *state.sso_token.write().await = Some(tok);
             return Ok(true);
@@ -69,8 +69,14 @@ async fn load_cached(start_url: &str) -> AppResult<Option<SsoToken>> {
     }))
 }
 
-/// Fallback: newest token in ~/.aws/sso/cache/*.json, like the original script.
-async fn load_from_aws_cli_cache() -> AppResult<Option<SsoToken>> {
+/// Fallback: newest token in ~/.aws/sso/cache/*.json **for the configured start URL**. Matching
+/// the start URL matters — a machine can hold cached tokens for several SSO portals (e.g. work +
+/// personal), and using one for the wrong portal would make every subsequent AWS call fail. If no
+/// start URL is configured we can't match, so we skip the fallback entirely.
+async fn load_from_aws_cli_cache(start_url: &str) -> AppResult<Option<SsoToken>> {
+    if start_url.trim().is_empty() {
+        return Ok(None);
+    }
     let Some(home) = directories::UserDirs::new().map(|d| d.home_dir().to_path_buf()) else {
         return Ok(None);
     };
@@ -89,17 +95,23 @@ async fn load_from_aws_cli_cache() -> AppResult<Option<SsoToken>> {
         let Ok(bytes) = tokio::fs::read(&path).await else {
             continue;
         };
-        // AWS CLI cache entries: { "accessToken": "...", "expiresAt": "2024-...Z", ... }
+        // AWS CLI token cache entries: { "accessToken", "expiresAt", "startUrl", "region", ... }
         #[derive(Deserialize)]
         struct AwsCacheEntry {
             #[serde(rename = "accessToken")]
             access_token: Option<String>,
             #[serde(rename = "expiresAt")]
             expires_at: Option<String>,
+            #[serde(rename = "startUrl")]
+            start_url: Option<String>,
         }
         let Ok(parsed) = serde_json::from_slice::<AwsCacheEntry>(&bytes) else {
             continue;
         };
+        // Only consider tokens minted for this same SSO portal.
+        if parsed.start_url.as_deref() != Some(start_url) {
+            continue;
+        }
         let (Some(token), Some(exp)) = (parsed.access_token, parsed.expires_at) else {
             continue;
         };
