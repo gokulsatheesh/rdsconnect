@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { EditorState } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import { EditorView, keymap, drawSelection } from "@codemirror/view";
 import { defaultKeymap } from "@codemirror/commands";
 import { sql, MySQL } from "@codemirror/lang-sql";
 
@@ -52,6 +52,7 @@ export function SqlEditor({ disabled, running, onRun, loadSql }: Props) {
       extensions: [
         keymap.of(defaultKeymap),
         runKeymap,
+        drawSelection(), // draw a styled caret + selection (visible on the dark theme)
         sql({ dialect: MySQL }),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) {
