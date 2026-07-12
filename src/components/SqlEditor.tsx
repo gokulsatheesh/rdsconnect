@@ -8,6 +8,8 @@ interface Props {
   disabled: boolean;
   running: boolean;
   onRun: (sql: string) => void;
+  /** When this changes, replace the active tab's content with `sql` (e.g. from history). */
+  loadSql: { sql: string; n: number } | null;
 }
 
 interface Tab {
@@ -19,7 +21,7 @@ interface Tab {
 let nextId = 1;
 
 /** Multi-tab CodeMirror 6 editor. Cmd/Ctrl+Enter runs the current tab. */
-export function SqlEditor({ disabled, running, onRun }: Props) {
+export function SqlEditor({ disabled, running, onRun, loadSql }: Props) {
   const [tabs, setTabs] = useState<Tab[]>([
     { id: nextId++, title: "Query 1", doc: "SELECT 1;" },
   ]);
@@ -67,6 +69,19 @@ export function SqlEditor({ disabled, running, onRun }: Props) {
     // Intentionally only re-create on tab switch, not on every doc change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
+
+  // Inject SQL from an external source (history) into the current editor, replacing its content.
+  // The updateListener keeps the tab's `doc` in sync, so no extra setTabs is needed.
+  useEffect(() => {
+    if (!loadSql) return;
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: loadSql.sql },
+    });
+    view.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadSql?.n]);
 
   const run = () => {
     const doc = viewRef.current?.state.doc.toString() ?? "";

@@ -84,6 +84,12 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color:
   overflow-y: auto; flex-shrink: 0; padding-bottom: 12px;
 }
 .schema-header { padding: 10px 12px; font-weight: 600; border-bottom: 1px solid var(--border); }
+/* Drag handle to resize the schema tree. */
+.col-resizer { width: 5px; flex-shrink: 0; cursor: col-resize; background: transparent; }
+.col-resizer:hover { background: var(--accent); }
+/* History rows are clickable (load into editor). */
+.history-row { cursor: pointer; }
+.history-row:hover td { background: var(--bg-3); }
 .schema-tree ul { list-style: none; margin: 0; padding: 0; }
 .tree-row { padding: 3px 12px; cursor: pointer; white-space: nowrap; }
 .tree-row:hover { background: var(--bg-3); }

@@ -4,10 +4,11 @@ import type { ColumnInfo } from "../api/types";
 
 interface Props {
   connectionId: string;
+  width: number;
 }
 
 /** databases -> tables -> columns, each level lazy-loaded on expand. */
-export function SchemaTree({ connectionId }: Props) {
+export function SchemaTree({ connectionId, width }: Props) {
   const [schemas, setSchemas] = useState<string[]>([]);
   const [open, setOpen] = useState<Record<string, boolean>>({});
 
@@ -16,7 +17,7 @@ export function SchemaTree({ connectionId }: Props) {
   }, [connectionId]);
 
   return (
-    <nav className="schema-tree">
+    <nav className="schema-tree" style={{ width }}>
       <div className="schema-header">Schema</div>
       <ul>
         {schemas.map((s) => (

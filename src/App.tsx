@@ -29,6 +29,8 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deviceCode, setDeviceCode] = useState<DeviceCode | null>(null);
+  const [loadSql, setLoadSql] = useState<{ sql: string; n: number } | null>(null);
+  const [schemaWidth, setSchemaWidth] = useState(240);
 
   const refreshConnections = useCallback(async () => {
     setConnections(await api.listSavedConnections());
@@ -102,6 +104,27 @@ export default function App() {
     }
   };
 
+  // Load a history query into the editor and show the results pane so the user can just hit Run.
+  const pickHistory = (sql: string) => {
+    setLoadSql((prev) => ({ sql, n: (prev?.n ?? 0) + 1 }));
+    setPanel("results");
+  };
+
+  // Drag handle between the schema tree and the workspace.
+  const startSchemaResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = schemaWidth;
+    const onMove = (ev: MouseEvent) =>
+      setSchemaWidth(Math.min(600, Math.max(160, startW + ev.clientX - startX)));
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   const runQuery = async (sql: string) => {
     if (!activeId) return;
     setRunning(true);
@@ -156,7 +179,14 @@ export default function App() {
         />
 
         {activeId && connectedIds.has(activeId) && (
-          <SchemaTree connectionId={activeId} />
+          <>
+            <SchemaTree connectionId={activeId} width={schemaWidth} />
+            <div
+              className="col-resizer"
+              onMouseDown={startSchemaResize}
+              title="Drag to resize"
+            />
+          </>
         )}
 
         <main className="workspace">
@@ -164,11 +194,12 @@ export default function App() {
             disabled={!activeId || !connectedIds.has(activeId)}
             running={running}
             onRun={runQuery}
+            loadSql={loadSql}
           />
           {error && <div className="error-bar">{error}</div>}
           <div className="panel">
             {panel === "results" && <ResultsGrid result={result} />}
-            {panel === "history" && <HistoryPanel />}
+            {panel === "history" && <HistoryPanel onPick={pickHistory} />}
             {panel === "settings" && (
               <Settings onClose={() => setPanel("results")} />
             )}

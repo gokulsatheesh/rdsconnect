@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { HistoryEntry } from "../api/types";
 
-export function HistoryPanel() {
+interface Props {
+  /** Load a past query's SQL into the editor (and switch to the results view). */
+  onPick: (sql: string) => void;
+}
+
+export function HistoryPanel({ onPick }: Props) {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
 
   useEffect(() => {
@@ -26,7 +31,12 @@ export function HistoryPanel() {
         </thead>
         <tbody>
           {entries.map((e, i) => (
-            <tr key={i} className={e.ok ? "" : "row-error"}>
+            <tr
+              key={i}
+              className={`history-row ${e.ok ? "" : "row-error"}`}
+              onClick={() => onPick(e.sql)}
+              title="Load into editor"
+            >
               <td>{new Date(e.at).toLocaleString()}</td>
               <td>{e.rows}</td>
               <td>{e.elapsed_ms} ms</td>
