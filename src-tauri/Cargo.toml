@@ -1,6 +1,6 @@
 [package]
 name = "rdsconnect"
-version = "0.1.6"
+version = "0.1.7"
 description = "IAM-native MySQL client for Linux"
 authors = ["gokul.satheesh"]
 edition = "2021"
