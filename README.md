@@ -75,9 +75,9 @@ A single self-contained binary. Nothing to install, **no `sudo` required** — d
 executable, and run:
 
 ```bash
-wget https://github.com/gokulsatheesh/rdsconnect/releases/download/v0.1.0/rdsconnect_0.1.0_amd64.AppImage
-chmod +x rdsconnect_0.1.0_amd64.AppImage
-./rdsconnect_0.1.0_amd64.AppImage
+wget https://github.com/gokulsatheesh/rdsconnect/releases/download/v1.0.0/rdsconnect_1.0.0_amd64.AppImage
+chmod +x rdsconnect_1.0.0_amd64.AppImage
+./rdsconnect_1.0.0_amd64.AppImage
 ```
 
 ### Debian / Ubuntu package (`.deb`)
@@ -86,8 +86,8 @@ Installs system-wide and adds rdsconnect to your application menu. Installing a 
 writes to `/usr/…`, so this route does need `sudo`:
 
 ```bash
-wget https://github.com/gokulsatheesh/rdsconnect/releases/download/v0.1.0/rdsconnect_0.1.0_amd64.deb
-sudo apt install ./rdsconnect_0.1.0_amd64.deb   # apt also pulls in the GTK/WebKit runtime
+wget https://github.com/gokulsatheesh/rdsconnect/releases/download/v1.0.0/rdsconnect_1.0.0_amd64.deb
+sudo apt install ./rdsconnect_1.0.0_amd64.deb   # apt also pulls in the GTK/WebKit runtime
 ```
 
 Then launch it from your application menu or run `rdsconnect`.
@@ -96,7 +96,7 @@ On first run, open **Settings** and enter your organization's **AWS SSO start UR
 The DB user defaults to your OS username and regions default to `us-east-1` — all editable.
 
 > **Fleet / MDM rollout (JumpCloud, etc.):** the `.deb` is a standard package, so a one-line
-> command policy — `apt install -y ./rdsconnect_0.1.0_amd64.deb` after fetching it — installs it
+> command policy — `apt install -y ./rdsconnect_1.0.0_amd64.deb` after fetching it — installs it
 > across managed laptops.
 
 ## Build from source
