@@ -347,16 +347,30 @@ fn row_to_strings(row: &MySqlRow) -> Vec<Option<String>> {
                 .as_ref()
                 .map(|r| r.type_info().name().to_string())
                 .unwrap_or_default();
-            // Try the common scalar decodings in order.
+            // Try the common scalar decodings in order. `u64` is needed for UNSIGNED integers
+            // (e.g. BIGINT UNSIGNED, which overflows i64 — information_schema is full of them);
+            // TIMESTAMP decodes as DateTime<Utc> while DATETIME is NaiveDateTime, so both are
+            // tried. DECIMAL and anything else fall through to the bytes path, which renders the
+            // ASCII value MySQL sends.
             if let Ok(v) = row.try_get::<String, _>(i) {
                 Some(v)
             } else if let Ok(v) = row.try_get::<i64, _>(i) {
                 Some(v.to_string())
+            } else if let Ok(v) = row.try_get::<u64, _>(i) {
+                Some(v.to_string())
             } else if let Ok(v) = row.try_get::<f64, _>(i) {
                 Some(v.to_string())
-            } else if let Ok(v) = row.try_get::<bool, _>(i) {
+            } else if let Ok(v) = row.try_get::<sqlx::types::BigDecimal, _>(i) {
                 Some(v.to_string())
             } else if let Ok(v) = row.try_get::<chrono::NaiveDateTime, _>(i) {
+                Some(v.to_string())
+            } else if let Ok(v) = row.try_get::<chrono::DateTime<chrono::Utc>, _>(i) {
+                Some(v.to_string())
+            } else if let Ok(v) = row.try_get::<chrono::NaiveDate, _>(i) {
+                Some(v.to_string())
+            } else if let Ok(v) = row.try_get::<chrono::NaiveTime, _>(i) {
+                Some(v.to_string())
+            } else if let Ok(v) = row.try_get::<bool, _>(i) {
                 Some(v.to_string())
             } else if let Ok(v) = row.try_get::<Vec<u8>, _>(i) {
                 Some(bytes_to_display(&v, &ty))
@@ -472,6 +486,76 @@ mod tests {
         assert!(
             !cells.iter().any(|s| s.contains("VARBINARY")),
             "grid should not show binary placeholders, got {cells:?}"
+        );
+
+        // The column types that previously rendered as "<TYPE>" placeholders. CASTs give real
+        // typed values without needing a selected database: BIGINT UNSIGNED (overflows i64),
+        // DATE, TIME, DECIMAL, plus a NULL.
+        let typed = sqlx::query(
+            "SELECT CAST(18446744073709551615 AS UNSIGNED) AS big_u, \
+                    CAST('2026-07-11' AS DATE) AS d, CAST('08:30:00' AS TIME) AS t, \
+                    CAST(3.14 AS DECIMAL(10,2)) AS dec_v, NULL AS n",
+        )
+        .fetch_all(&mut conn)
+        .await
+        .expect("typed select");
+        let out = row_to_strings(&typed[0]);
+        assert_eq!(
+            out[0].as_deref(),
+            Some("18446744073709551615"),
+            "BIGINT UNSIGNED"
+        );
+        assert_eq!(out[1].as_deref(), Some("2026-07-11"), "DATE");
+        assert_eq!(out[2].as_deref(), Some("08:30:00"), "TIME");
+        assert_eq!(out[3].as_deref(), Some("3.14"), "DECIMAL");
+        assert_eq!(out[4], None, "NULL");
+        assert!(
+            !out.iter()
+                .flatten()
+                .any(|s| s.starts_with('<') && s.ends_with('>')),
+            "no cell should be a <TYPE> placeholder, got {out:?}"
+        );
+
+        // A real tz-aware TIMESTAMP column — exactly the information_schema.tables.create_time the
+        // user hit, which decodes as DateTime<Utc>. Must render as a date, not "<TIMESTAMP>".
+        let ts_rows = sqlx::query(
+            "SELECT create_time FROM information_schema.tables \
+             WHERE create_time IS NOT NULL LIMIT 1",
+        )
+        .fetch_all(&mut conn)
+        .await
+        .expect("timestamp select");
+        let ts_cell = row_to_strings(ts_rows.first().expect("a table with a create_time"));
+        assert!(
+            ts_cell[0].as_deref().is_some_and(|s| !s.contains('<')),
+            "TIMESTAMP column should render, got {:?}",
+            ts_cell[0]
+        );
+
+        // ORDINAL_POSITION / NUMERIC_PRECISION are BIGINT UNSIGNED. Before the u64 fix they fell
+        // through to a bool decode and rendered as "true" (the exact bug seen in the UI). They
+        // must now be plain numbers.
+        let col_rows = sqlx::query(
+            "SELECT ordinal_position, numeric_precision FROM information_schema.columns \
+             WHERE numeric_precision IS NOT NULL LIMIT 1",
+        )
+        .fetch_all(&mut conn)
+        .await
+        .expect("columns select");
+        let cr = row_to_strings(col_rows.first().expect("a numeric column"));
+        assert!(
+            cr[0]
+                .as_deref()
+                .is_some_and(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())),
+            "ordinal_position should be numeric, got {:?}",
+            cr[0]
+        );
+        assert!(
+            cr[1]
+                .as_deref()
+                .is_some_and(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())),
+            "numeric_precision should be numeric, got {:?}",
+            cr[1]
         );
 
         let _ = conn.close().await;

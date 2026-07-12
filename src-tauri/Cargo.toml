@@ -34,6 +34,7 @@ sqlx = { version = "0.8", default-features = false, features = [
     "runtime-tokio-rustls",
     "mysql",
     "chrono",
+    "bigdecimal", # decode DECIMAL/NUMERIC columns (else they render as "<DECIMAL>")
 ] }
 
 # Serde / persistence
