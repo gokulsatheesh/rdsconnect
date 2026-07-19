@@ -13,7 +13,7 @@
   "dependencies": {
     "@codemirror/lang-sql": "^6.7.0",
     "@codemirror/state": "^6.4.1",
-    "@codemirror/view": "^6.28.0",
+    "@codemirror/view": "^6.43.6",
     "@tanstack/react-table": "^8.17.3",
     "@tanstack/react-virtual": "^3.5.0",
     "@tauri-apps/api": "^2.0.0",
